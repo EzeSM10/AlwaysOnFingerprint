@@ -2,6 +2,8 @@
 
 An LSPosed module that restores screen-off fingerprint unlocking for Google Pixel devices equipped with optical sensors.
 
+[🇪🇸 Leer en Español](README_ES.md)
+
 ---
 
 ## 📖 Description
@@ -63,5 +65,5 @@ In Android 16 QPR3, Google introduced multiple layers of barriers against optica
 
 ## 🤝 Credits & Acknowledgements
 
-- **Original Project:** [AlwaysOnFingerprint](https://github.com/EzeSM10/AlwaysOnFingerprint) by EzeSM10 / KLab
+- **Original Project:** [AlwaysOnFingerprint](https://github.com/klab7/AlwaysOnFingerprint) by [klab7](https://github.com/klab7)
 - **Fixes, In-Memory `DeviceConfig` Interception & Enhancements:** Engineered by **Antigravity** (Google DeepMind) in pair-programming with **[@derxan](https://github.com/derxan)**.
