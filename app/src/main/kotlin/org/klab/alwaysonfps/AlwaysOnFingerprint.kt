@@ -25,30 +25,51 @@ class AlwaysOnFingerprint : XposedModule() {
         if (packageName == "com.android.settings") {
             try {
                 val clazz1 = classLoader.loadClass("com.android.settings.biometrics.fingerprint.FingerprintSettingsScreenOffUnlockUdfpsPreferenceController")
-                hook(clazz1.getDeclaredMethod("getAvailabilityStatus")).intercept(ConstantHooker(0))
-
-                val clazz2 = classLoader.loadClass("com.android.settings.biometrics.fingerprint.FingerprintSettings\$FingerprintSettingsFragment")
-                hook(clazz2.getDeclaredMethod("isScreenOffUnlcokSupported")).intercept(ConstantHooker(true))
-
-                log(Log.INFO, TAG, "Hooked Settings")
+                clazz1.declaredMethods.find { it.name == "getAvailabilityStatus" }?.let {
+                    hook(it).intercept(ConstantHooker(0))
+                }
+                clazz1.declaredMethods.find { it.name == "isAvailable" }?.let {
+                    hook(it).intercept(ConstantHooker(true))
+                }
+                log(Log.INFO, TAG, "Hooked FingerprintSettingsScreenOffUnlockUdfpsPreferenceController")
             } catch (t: Throwable) {
-                log(Log.ERROR, TAG, "Failed to hook Settings", t)
+                log(Log.ERROR, TAG, "Failed to hook FingerprintSettingsScreenOffUnlockUdfpsPreferenceController", t)
+            }
+
+            try {
+                val clazz2 = classLoader.loadClass("com.android.settings.biometrics.fingerprint.FingerprintSettings\$FingerprintSettingsFragment")
+                clazz2.declaredMethods.find {
+                    it.name == "isScreenOffUnlockSupported" || it.name == "isScreenOffUnlcokSupported"
+                }?.let {
+                    hook(it).intercept(ConstantHooker(true))
+                }
+                log(Log.INFO, TAG, "Hooked FingerprintSettingsFragment")
+            } catch (t: Throwable) {
+                log(Log.ERROR, TAG, "Failed to hook FingerprintSettingsFragment", t)
             }
         }
 
         try {
             val clazz = classLoader.loadClass("android.hardware.display.AmbientDisplayConfiguration")
-            hook(clazz.getDeclaredMethod("screenOffUdfpsEnabled", Int::class.javaPrimitiveType)).intercept(AmbientDisplayHooker())
-            hook(clazz.getDeclaredMethod("udfpsLongPressSensorType")).intercept(ConstantHooker("com.google.sensor.long_press"))
+            clazz.declaredMethods.filter { it.name == "screenOffUdfpsEnabled" }.forEach { method ->
+                hook(method).intercept(AmbientDisplayHooker())
+            }
+            clazz.declaredMethods.filter { it.name == "udfpsLongPressSensorType" }.forEach { method ->
+                hook(method).intercept(ConstantHooker("com.google.sensor.long_press"))
+            }
             log(Log.INFO, TAG, "Hooked AmbientDisplayConfiguration")
         } catch (t: Throwable) {
             log(Log.ERROR, TAG, "Failed to hook AmbientDisplayConfiguration", t)
         }
 
+        hookDeviceConfig(classLoader)
+
         if (packageName == "com.android.systemui") {
             try {
                 val rippleClazz = classLoader.loadClass("com.android.systemui.biometrics.AuthRippleController")
-                hook(rippleClazz.getDeclaredMethod("onViewAttached")).intercept(AuthRippleControllerHooker())
+                rippleClazz.declaredMethods.find { it.name == "onViewAttached" }?.let {
+                    hook(it).intercept(AuthRippleControllerHooker())
+                }
             } catch (t: Throwable) {
                 log(Log.ERROR, TAG, "Failed to hook AuthRippleController", t)
             }
@@ -78,8 +99,10 @@ class AlwaysOnFingerprint : XposedModule() {
 
             try {
                 val clazz = classLoader.loadClass("com.android.keyguard.KeyguardUpdateMonitor")
-                hook(clazz.getDeclaredMethod("isFingerprintDetectionRunning")).intercept(KeyguardUpdateMonitorHooker())
-                log(Log.INFO, TAG, "Hooked KeyguardUpdateMonitor")
+                clazz.declaredMethods.find { it.name == "isFingerprintDetectionRunning" }?.let {
+                    hook(it).intercept(KeyguardUpdateMonitorHooker())
+                    log(Log.INFO, TAG, "Hooked KeyguardUpdateMonitor")
+                }
             } catch (t: Throwable) {
                 log(Log.ERROR, TAG, "Failed to hook KeyguardUpdateMonitor", t)
             }
@@ -99,8 +122,154 @@ class AlwaysOnFingerprint : XposedModule() {
         }
     }
 
+    private fun hookDeviceConfig(classLoader: ClassLoader) {
+        try {
+            val deviceConfigClazz = classLoader.loadClass("android.provider.DeviceConfig")
+            for (method in deviceConfigClazz.declaredMethods) {
+                if (Modifier.isStatic(method.modifiers)) {
+                    when (method.name) {
+                        "getBoolean" -> if (method.parameterCount == 3) {
+                            hook(method).intercept(DeviceConfigBooleanHooker())
+                        }
+                        "getString" -> if (method.parameterCount == 3) {
+                            hook(method).intercept(DeviceConfigStringHooker())
+                        }
+                        "getProperty" -> if (method.parameterCount == 2) {
+                            hook(method).intercept(DeviceConfigPropertyHooker())
+                        }
+                        "getInt" -> if (method.parameterCount == 3) {
+                            hook(method).intercept(DeviceConfigIntHooker())
+                        }
+                    }
+                }
+            }
+            log(Log.INFO, TAG, "Hooked DeviceConfig")
+        } catch (t: Throwable) {
+            log(Log.ERROR, TAG, "Failed to hook DeviceConfig", t)
+        }
+
+        try {
+            val propertiesClazz = classLoader.loadClass("android.provider.DeviceConfig\$Properties")
+            for (method in propertiesClazz.declaredMethods) {
+                when (method.name) {
+                    "getBoolean" -> if (method.parameterCount == 2) {
+                        hook(method).intercept(PropertiesBooleanHooker())
+                    }
+                    "getString" -> if (method.parameterCount == 2) {
+                        hook(method).intercept(PropertiesStringHooker())
+                    }
+                    "getInt" -> if (method.parameterCount == 2) {
+                        hook(method).intercept(PropertiesIntHooker())
+                    }
+                }
+            }
+            log(Log.INFO, TAG, "Hooked DeviceConfig.Properties")
+        } catch (t: Throwable) {
+            log(Log.ERROR, TAG, "Failed to hook DeviceConfig.Properties", t)
+        }
+    }
+
+    private fun isScreenOffUdfpsEnabled(context: Context): Boolean {
+        return try {
+            val value = Settings.Secure.getInt(context.contentResolver, "screen_off_udfps_enabled", -1)
+            if (value == -1) {
+                try {
+                    Settings.Secure.putInt(context.contentResolver, "screen_off_udfps_enabled", 1)
+                } catch (_: Throwable) {}
+                true
+            } else {
+                value == 1
+            }
+        } catch (_: Throwable) {
+            true
+        }
+    }
+
     inner class ConstantHooker(private val value: Any) : XposedInterface.Hooker {
         override fun intercept(chain: XposedInterface.Chain): Any = value
+    }
+
+    inner class DeviceConfigBooleanHooker : XposedInterface.Hooker {
+        override fun intercept(chain: XposedInterface.Chain): Any {
+            val namespace = chain.getArg(0) as? String
+            val name = chain.getArg(1) as? String
+            if (namespace == "biometrics" && name == "screen_off_udfps_enabled") {
+                return true
+            }
+            return chain.proceed()
+        }
+    }
+
+    inner class DeviceConfigStringHooker : XposedInterface.Hooker {
+        override fun intercept(chain: XposedInterface.Chain): Any? {
+            val namespace = chain.getArg(0) as? String
+            val name = chain.getArg(1) as? String
+            if (namespace == "biometrics" && name == "screen_off_udfps_enabled") {
+                return "true"
+            }
+            if (namespace == "latency_tracker" && name == "refresh_rate_switching_policy") {
+                return "1"
+            }
+            return chain.proceed()
+        }
+    }
+
+    inner class DeviceConfigPropertyHooker : XposedInterface.Hooker {
+        override fun intercept(chain: XposedInterface.Chain): Any? {
+            val namespace = chain.getArg(0) as? String
+            val name = chain.getArg(1) as? String
+            if (namespace == "biometrics" && name == "screen_off_udfps_enabled") {
+                return "true"
+            }
+            if (namespace == "latency_tracker" && name == "refresh_rate_switching_policy") {
+                return "1"
+            }
+            return chain.proceed()
+        }
+    }
+
+    inner class DeviceConfigIntHooker : XposedInterface.Hooker {
+        override fun intercept(chain: XposedInterface.Chain): Any {
+            val namespace = chain.getArg(0) as? String
+            val name = chain.getArg(1) as? String
+            if (namespace == "latency_tracker" && name == "refresh_rate_switching_policy") {
+                return 1
+            }
+            return chain.proceed()
+        }
+    }
+
+    inner class PropertiesBooleanHooker : XposedInterface.Hooker {
+        override fun intercept(chain: XposedInterface.Chain): Any {
+            val name = chain.getArg(0) as? String
+            if (name == "screen_off_udfps_enabled") {
+                return true
+            }
+            return chain.proceed()
+        }
+    }
+
+    inner class PropertiesStringHooker : XposedInterface.Hooker {
+        override fun intercept(chain: XposedInterface.Chain): Any? {
+            val name = chain.getArg(0) as? String
+            if (name == "screen_off_udfps_enabled") {
+                return "true"
+            }
+            if (name == "refresh_rate_switching_policy") {
+                return "1"
+            }
+            return chain.proceed()
+        }
+    }
+
+    inner class PropertiesIntHooker : XposedInterface.Hooker {
+        override fun intercept(chain: XposedInterface.Chain): Any {
+            val name = chain.getArg(0) as? String
+            if (name == "refresh_rate_switching_policy") {
+                return 1
+            }
+            return chain.proceed()
+        }
     }
 
     inner class AmbientDisplayHooker : XposedInterface.Hooker {
@@ -109,7 +278,7 @@ class AlwaysOnFingerprint : XposedModule() {
             try {
                 val mContextField = instance.javaClass.getDeclaredField("mContext").apply { isAccessible = true }
                 val context = mContextField.get(instance) as Context
-                if (Settings.Secure.getInt(context.contentResolver, "screen_off_udfps_enabled", 0) == 1) return true
+                if (isScreenOffUdfpsEnabled(context)) return true
             } catch (e: Exception) {
                 log(Log.ERROR, TAG, "Failed in AmbientDisplayHooker", e)
             }
@@ -204,7 +373,7 @@ class AlwaysOnFingerprint : XposedModule() {
                 }
 
                 val context = instance.javaClass.getDeclaredField("mContext").apply { isAccessible = true }.get(instance) as Context
-                if (Settings.Secure.getInt(context.contentResolver, "screen_off_udfps_enabled", 0) == 1) {
+                if (isScreenOffUdfpsEnabled(context)) {
                     val isInteractive = instance.javaClass.getDeclaredField("mDeviceInteractive").apply { isAccessible = true }.getBoolean(instance)
                     if (!isInteractive) {
                         return true
@@ -224,8 +393,12 @@ class AlwaysOnFingerprint : XposedModule() {
                 try {
                     val clazz = instance.javaClass
                     val context = clazz.getDeclaredField("mContext").apply { isAccessible = true }.get(instance) as Context
-                    if (Settings.Secure.getInt(context.contentResolver, "screen_off_udfps_enabled", 0) == 1) {
-                        clazz.getDeclaredField("mIgnoreRefreshRate").apply { isAccessible = true }.setBoolean(instance, true)
+                    if (isScreenOffUdfpsEnabled(context)) {
+                        try {
+                            clazz.getDeclaredField("mIgnoreRefreshRate").apply { isAccessible = true }.setBoolean(instance, true)
+                        } catch (e: Exception) {
+                            log(Log.ERROR, TAG, "Failed to set mIgnoreRefreshRate", e)
+                        }
                         val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
                         if (!powerManager.isInteractive) {
                             try {
