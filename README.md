@@ -59,7 +59,7 @@ In Android 16 QPR3, Google introduced multiple layers of barriers against optica
 ## 📱 Compatibility
 
 - **Devices:** Pixel 6, 6 Pro, 6a, 7, 7 Pro, 7a, Fold, 8, 8 Pro, 8a (all Pixel devices with optical UDFPS)
-- **OS:** Android 16 QPR3+ (Stock Google Pixel Firmware)
+- **OS:** Android 16 QPR3+, tested on Android 17 & Canary 2608 (Stock Google Pixel Firmware)
 
 ---
 
